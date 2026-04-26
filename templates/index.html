@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero Trust SOC Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.75);
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-blue-glow: rgba(59, 130, 246, 0.5);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.4);
+            --warning: #8b5cf6;
+            --success: #10b981;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.1), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(239, 68, 68, 0.05), transparent 25%);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 260px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border-right: 1px solid var(--panel-border);
+            padding: 2rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 2.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-primary);
+            text-shadow: 0 0 15px var(--accent-blue-glow);
+        }
+
+        .logo span {
+            color: var(--accent-blue);
+        }
+
+        .nav-items {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .nav-item {
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .nav-item.active, .nav-item:hover {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--accent-blue);
+            box-shadow: inset 3px 0 0 var(--accent-blue);
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            padding: 2rem 3rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            overflow-y: auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+
+        .status-badge {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-badge::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        /* Metric Cards */
+        .cards-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .card {
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--panel-border);
+            padding: 1.5rem;
+            border-radius: 16px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .card h3 {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        .card p.value {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .card.danger p.value {
+            color: var(--danger);
+            text-shadow: 0 0 10px var(--danger-glow);
+        }
+
+        .card.warning p.value {
+            color: var(--warning);
+        }
+
+        /* Charts Section */
+        .charts-row {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .chart-card {
+            flex: 1;
+            min-width: 0; /* Prevents flexbox expansion issue with canvas */
+        }
+
+        .canvas-container {
+            position: relative;
+            height: 250px;
+            width: 100%;
+            margin-top: 15px;
+        }
+
+        .canvas-container.small {
+            height: 200px;
+        }
+
+        /* Table */
+        .table-container {
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            overflow-x: auto;
+        }
+
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        .table-header h2 {
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 0.9rem;
+        }
+
+        th {
+            color: var(--text-secondary);
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+        }
+
+        tr {
+            transition: background 0.2s ease;
+        }
+
+        tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        /* Badge Styles */
+        .badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        .badge.high { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge.medium { background: rgba(139, 92, 246, 0.15); color: var(--warning); border: 1px solid rgba(139, 92, 246, 0.3); }
+        .badge.low { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge.blacklisted { background: var(--danger); color: white; box-shadow: 0 0 10px var(--danger-glow); }
+        .badge.suspicious { background: var(--warning); color: #000; }
+        .badge.normal { background: var(--success); color: #000; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Alert Notifications */
+        .alerts-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 400px;
+        }
+
+        .alert-notification {
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border);
+            border-left: 4px solid var(--danger);
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.3s ease-out;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .alert-notification:hover {
+            transform: translateX(-5px);
+        }
+
+        .alert-notification.high-risk {
+            border-left-color: var(--danger);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+        }
+
+        .alert-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .alert-content {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .alert-time {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+
+        /* Alert Notification */
+        .alert-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border);
+            border-left: 4px solid var(--danger);
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.3s ease-out;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            max-width: 350px;
+            z-index: 1000;
+        }
+
+        .alert-notification:hover {
+            transform: translateX(-5px);
+        }
+
+        .alert-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .alert-content {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="logo">
+            🛡️ <span>SOC</span>Core
+        </div>
+        <div class="nav-items">
+            <div class="nav-item active" data-target="view-dashboard">Live Dashboard</div>
+            <div class="nav-item" data-target="view-threats">Threat Intelligence</div>
+            <div class="nav-item" data-target="view-firewall">Firewall Rules</div>
+            <div class="nav-item" data-target="view-logs">System Logs</div>
+            <div class="nav-item" style="margin-top: 2rem;" data-target="view-settings">Settings</div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <header>
+            <h1 id="page-title">Security Operations Center</h1>
+            <div class="status-badge" id="system-status">System Active (Polling)</div>
+        </header>
+
+        <!-- DASHBOARD VIEW -->
+        <div id="view-dashboard" class="content-view">
+            
+            <div class="cards-container">
+                <div class="card">
+                    <h3>Total Threats Detected</h3>
+                    <p class="value" id="val-total">0</p>
+                </div>
+                <div class="card danger">
+                    <h3>High Risk Alerts</h3>
+                    <p class="value" id="val-high">0</p>
+                </div>
+                <div class="card warning">
+                    <h3>Top Threat IP</h3>
+                    <p class="value" id="val-top-ip" style="font-size: 1.5rem; margin-top: 10px;">None</p>
+                </div>
+                <div class="card">
+                    <h3>Active Monitoring</h3>
+                    <p class="value" style="color: var(--accent-blue);">Online</p>
+                </div>
+            </div>
+
+            <!-- Dashboard Charts -->
+            <div class="charts-row">
+                <div class="card chart-card">
+                    <h3>Risk Distribution</h3>
+                    <div class="canvas-container small">
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+                <div class="card chart-card">
+                    <h3>Security Overview</h3>
+                    <div class="canvas-container small">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card chart-card" style="margin-bottom: 2rem; position: relative; overflow: hidden; min-height: 400px; padding: 0;">
+                <div style="position: absolute; top: 1.5rem; left: 2rem; z-index: 10;">
+                    <h2 style="font-size: 1.8rem; font-weight: 700; color: #f8fafc; margin-bottom: 5px; letter-spacing: -0.5px;">Attack Origin Visualizer</h2>
+                    <p style="color: #94a3b8; font-size: 1rem;">Real-time mapping of blocked IP traffic</p>
+                </div>
+                <div style="position: absolute; bottom: 1.5rem; right: 2rem; z-index: 10;">
+                    <span style="font-size: 1rem; font-weight: 700; color: #f8fafc; letter-spacing: 1px;">LIVE UPDATES</span>
+                </div>
+                <div style="position: absolute; bottom: 1.5rem; left: 2rem; z-index: 10;">
+                    <span style="font-size: 0.8rem; font-family: monospace; color: rgba(255,255,255,0.2); letter-spacing: 1px;">SIMULATED GLOBAL INTELLIGENCE MAPPING</span>
+                </div>
+                <canvas id="attackMapCanvas" style="position: absolute; top:0; left:0; width: 100%; height: 100%; z-index: 1;"></canvas>
+            </div>
+
+            <div class="table-container">
+                <div class="table-header">
+                    <h2>Real-Time Event Stream</h2>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary);">Auto-updating...</div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Source IP</th>
+                            <th>Severity</th>
+                            <th>Threat Classification</th>
+                            <th>Recommended Action</th>
+                            <th>System Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logTable">
+                        <!-- Logs populated via JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- THREAT INTELLIGENCE VIEW -->
+        <div id="view-threats" class="content-view" style="display: none;">
+            <div class="card">
+                <h3>Global Threat Feed & Indicators of Compromise</h3>
+                <p style="color: var(--text-secondary); margin: 15px 0;">Currently monitoring internal logs. Integration with global CVE databases (e.g. AlienVault OTX) is healthy.</p>
+                <div style="padding: 15px; background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); border-radius: 8px; color: var(--success);">
+                    ✓ No active global threats match your localized environment telemetry.
+                </div>
+            </div>
+        </div>
+
+        <!-- FIREWALL RULES VIEW -->
+        <div id="view-firewall" class="content-view" style="display: none;">
+            <div class="card">
+                <h3>Active Windows Inbound Blocklist</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 20px;">IP addresses that have been automatically isolated by responder.py.</p>
+                
+                <div id="firewall-list" style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- fw items populate here -->
+                </div>
+                <div id="firewall-empty" class="empty-state">
+                    No active firewall blocks. Waiting for high-risk anomalies.
+                </div>
+            </div>
+        </div>
+
+        <!-- SYSTEM LOGS VIEW -->
+        <div id="view-logs" class="content-view" style="display: none;">
+            <div class="card">
+                <h3>System Telemetry Dump</h3>
+                <pre id="raw-log-dump" style="background: rgba(0,0,0,0.4); padding: 20px; border-radius: 8px; color: #8fbcbb; overflow-x: auto; font-family: monospace; max-height: 500px;">Awaiting diagnostic trigger to dump raw telemetry...</pre>
+                <button id="btn-fetch-logs" style="margin-top: 15px; background: var(--accent-blue); border: none; padding: 10px 20px; color: #fff; border-radius: 6px; cursor: pointer; font-weight: 600;">Fetch Deep Diagnostic Dump</button>
+            </div>
+        </div>
+
+        <!-- SETTINGS VIEW -->
+        <div id="view-settings" class="content-view" style="display: none;">
+            <div class="card">
+                <h3>Core System Configuration</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">Changes are saved automatically to the backend.</p>
+                <div style="margin-top:20px; display:flex; flex-direction:column; gap:20px; color: var(--text-primary);">
+                    <label style="display:flex; align-items:center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="setting-auto-block" style="width:18px; height:18px;"> Enable Automated Firewall Blocking Actions
+                    </label>
+                    <label style="display:flex; align-items:center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="setting-alerts" style="width:18px; height:18px;"> Log Administrator Alerts Locally
+                    </label>
+                    <label style="display:flex; align-items:center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="setting-strict" style="width:18px; height:18px;"> Trigger Strict Mode (Block on 3 strikes instead of 5)
+                    </label>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Alert Notifications Container -->
+    <div class="alerts-container" id="alerts-container">
+        <!-- Alerts will be dynamically added here -->
+    </div>
+
+    <!-- Alert Notification Container -->
+    <div id="alert-container"></div>
+
+    <script>
+        // Chart Initialization
+        let barChartInst = null;
+        let pieChartInst = null;
+
+        // Attack Origin Visualizer Data
+        const attackMapCanvas = document.getElementById('attackMapCanvas');
+        let mapCtx = null;
+        let mapWidth = 0;
+        let mapHeight = 0;
+        let attackNodes = [];
+        let attackArcs = [];
+        let centralNode = null;
+
+        function initAttackMap() {
+            if (!attackMapCanvas) return;
+            mapCtx = attackMapCanvas.getContext('2d');
+            
+            function resize() {
+                const rect = attackMapCanvas.parentElement.getBoundingClientRect();
+                attackMapCanvas.width = rect.width;
+                attackMapCanvas.height = rect.height;
+                mapWidth = rect.width;
+                mapHeight = rect.height;
+                centralNode = { x: mapWidth / 2 + (mapWidth * 0.1), y: mapHeight * 0.6, color: '#3b82f6', pulse: 0 };
+            }
+            window.addEventListener('resize', resize);
+            resize();
+            
+            requestAnimationFrame(animateAttackMap);
+        }
+
+        function triggerAttack() {
+            const startX = Math.random() * (mapWidth * 0.8) + (mapWidth * 0.1);
+            const startY = Math.random() * (mapHeight * 0.4) + (mapHeight * 0.1);
+            const isHighRisk = Math.random() > 0.5;
+            const nodeColor = isHighRisk ? '#ef4444' : '#8b5cf6';
+            
+            attackNodes.push({ x: startX, y: startY, color: nodeColor, pulse: 0, life: 150 });
+            attackArcs.push({
+                start: attackNodes[attackNodes.length - 1],
+                end: centralNode,
+                progress: 0,
+                color: nodeColor,
+                dashed: true
+            });
+        }
+
+        function animateAttackMap() {
+            if (!mapCtx) return;
+            mapCtx.clearRect(0, 0, mapWidth, mapHeight);
+
+            // Draw central node
+            if (centralNode) {
+                mapCtx.beginPath();
+                mapCtx.arc(centralNode.x, centralNode.y, 4, 0, Math.PI * 2);
+                mapCtx.fillStyle = centralNode.color;
+                mapCtx.fill();
+
+                mapCtx.beginPath();
+                mapCtx.arc(centralNode.x, centralNode.y, 10 + Math.sin(centralNode.pulse) * 4, 0, Math.PI * 2);
+                mapCtx.fillStyle = 'rgba(59, 130, 246, 0.2)';
+                mapCtx.fill();
+                centralNode.pulse += 0.05;
+            }
+
+            // Draw nodes
+            for (let i = attackNodes.length - 1; i >= 0; i--) {
+                let node = attackNodes[i];
+                mapCtx.beginPath();
+                mapCtx.arc(node.x, node.y, 3, 0, Math.PI * 2);
+                mapCtx.fillStyle = node.color;
+                mapCtx.fill();
+
+                mapCtx.beginPath();
+                mapCtx.arc(node.x, node.y, 8 + Math.sin(node.pulse) * 3, 0, Math.PI * 2);
+                mapCtx.fillStyle = node.color === '#ef4444' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(139, 92, 246, 0.15)';
+                mapCtx.fill();
+                node.pulse += 0.1;
+                node.life--;
+
+                if (node.life <= 0) {
+                    attackNodes.splice(i, 1);
+                }
+            }
+
+            // Draw arcs
+            for (let i = attackArcs.length - 1; i >= 0; i--) {
+                let arc = attackArcs[i];
+                
+                const midX = (arc.start.x + arc.end.x) / 2;
+                const midY = (arc.start.y + arc.end.y) / 2;
+                const dist = Math.sqrt(Math.pow(arc.end.x - arc.start.x, 2) + Math.pow(arc.end.y - arc.start.y, 2));
+                const cpX = midX;
+                const cpY = midY - (dist * 0.3); // Curve upwards
+
+                // Draw dashed path
+                mapCtx.beginPath();
+                mapCtx.moveTo(arc.start.x, arc.start.y);
+                mapCtx.quadraticCurveTo(cpX, cpY, arc.end.x, arc.end.y);
+                mapCtx.strokeStyle = arc.color === '#ef4444' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(139, 92, 246, 0.2)';
+                mapCtx.lineWidth = 1;
+                mapCtx.setLineDash([4, 6]);
+                mapCtx.stroke();
+                mapCtx.setLineDash([]);
+
+                // Draw moving projectile
+                if (arc.progress < 1) {
+                    arc.progress += 0.01; // Speed
+                    const t = arc.progress;
+                    const currX = (1 - t) * (1 - t) * arc.start.x + 2 * (1 - t) * t * cpX + t * t * arc.end.x;
+                    const currY = (1 - t) * (1 - t) * arc.start.y + 2 * (1 - t) * t * cpY + t * t * arc.end.y;
+
+                    mapCtx.beginPath();
+                    mapCtx.arc(currX, currY, 2.5, 0, Math.PI * 2);
+                    mapCtx.fillStyle = arc.color;
+                    mapCtx.shadowColor = arc.color;
+                    mapCtx.shadowBlur = 8;
+                    mapCtx.fill();
+                    mapCtx.shadowBlur = 0;
+                } else {
+                    attackArcs.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(animateAttackMap);
+        }
+
+        function initCharts() {
+            // Chart.js default defaults for dark mode
+            Chart.defaults.color = '#94a3b8';
+            Chart.defaults.font.family = 'Inter';
+
+            // Risk Distribution Bar Chart
+            const ctxBar = document.getElementById('barChart').getContext('2d');
+            barChartInst = new Chart(ctxBar, {
+                type: 'bar',
+                data: {
+                    labels: ['Low', 'Medium', 'High'],
+                    datasets: [{
+                        label: 'Incidents',
+                        data: [0, 0, 0],
+                        backgroundColor: ['#10b981', '#8b5cf6', '#ef4444'],
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+                        x: { grid: { display: false } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            // Security Overview Doughnut Chart
+            const ctxPie = document.getElementById('pieChart').getContext('2d');
+            pieChartInst = new Chart(ctxPie, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Low', 'Medium', 'High'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#10b981', '#8b5cf6', '#ef4444'],
+                        borderWidth: 0,
+                        cutout: '75%'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+
+            // Init Attack Map Visualizer
+            initAttackMap();
+        }
+
+        // Sidebar Navigation Logic
+        const navItems = document.querySelectorAll('.nav-item');
+        const views = document.querySelectorAll('.content-view');
+        const pageTitle = document.getElementById('page-title');
+
+        navItems.forEach(item => {
+            item.addEventListener('click', function() {
+                navItems.forEach(nav => nav.classList.remove('active'));
+                this.classList.add('active');
+
+                const targetId = this.getAttribute('data-target');
+                views.forEach(view => view.style.display = 'none');
+                document.getElementById(targetId).style.display = 'block';
+
+                if (targetId === 'view-dashboard') {
+                    pageTitle.innerText = "Security Operations Center";
+                } else {
+                    pageTitle.innerText = this.innerText;
+                }
+
+                if (targetId === 'view-firewall') loadFirewallBlocks();
+            });
+        });
+
+        // Firewall Data Fetching
+        async function loadFirewallBlocks() {
+            try {
+                const response = await fetch('/api/firewall');
+                const ips = await response.json();
+                const fwListContainer = document.getElementById('firewall-list');
+                const emptyState = document.getElementById('firewall-empty');
+
+                fwListContainer.innerHTML = '';
+
+                if (ips.length === 0) {
+                    emptyState.style.display = 'block';
+                } else {
+                    emptyState.style.display = 'none';
+                    ips.forEach(ip => {
+                        const div = document.createElement('div');
+                        div.className = 'fw-item';
+                        div.innerHTML = `
+                            <div style="font-family: monospace; font-size: 1.1rem; color: var(--text-primary);">${ip}</div>
+                            <span class="badge blacklisted">BLOCKED</span>
+                        `;
+                        fwListContainer.appendChild(div);
+                    });
+                }
+            } catch (e) {
+                console.error("Failed to load firewall rules", e);
+            }
+        }
+
+        // Alert Notification System
+        let alertCounter = 0;
+        let hasShownHighRiskAlert = false;
+
+        function playBeep() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.5);
+            } catch (e) {
+                console.log('Audio not supported');
+            }
+        }
+
+        function createAlert(severity, title, content, ip, time) {
+            const alertsContainer = document.getElementById('alerts-container');
+            
+            // Only show alerts for high-risk events
+            if (severity !== 'High') return;
+            
+            const alertId = `alert-${alertCounter++}`;
+            const alertDiv = document.createElement('div');
+            alertDiv.id = alertId;
+            alertDiv.className = `alert-notification high-risk`;
+            
+            alertDiv.innerHTML = `
+                <div class="alert-title">
+                    <span>🚨</span>
+                    ${title}
+                </div>
+                <div class="alert-content">
+                    ${content}<br>
+                    <strong>Source IP:</strong> ${ip}
+                </div>
+                <div class="alert-time">${time}</div>
+            `;
+            
+            // Play beep sound
+            playBeep();
+            
+            // Add click to dismiss
+            alertDiv.addEventListener('click', () => {
+                alertDiv.style.animation = 'fadeOut 0.3s ease-out';
+                setTimeout(() => {
+                    if (alertDiv.parentNode) {
+                        alertDiv.parentNode.removeChild(alertDiv);
+                    }
+                }, 300);
+            });
+            
+            alertsContainer.appendChild(alertDiv);
+            
+            // Auto-dismiss after 15 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.style.animation = 'fadeOut 0.3s ease-out';
+                    setTimeout(() => {
+                        if (alertDiv.parentNode) {
+                            alertDiv.parentNode.removeChild(alertDiv);
+                        }
+                    }, 300);
+                }
+            }, 15000);
+        }
+
+        // Alert Notification Function
+        function showHighRiskAlert(highCount) {
+            const container = document.getElementById('alert-container');
+            
+            // Remove any existing alert
+            container.innerHTML = '';
+            
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert-notification';
+            alertDiv.innerHTML = `
+                <div class="alert-title">
+                    <span>🚨</span>
+                    High Risk Alert Detected
+                </div>
+                <div class="alert-content">
+                    ${highCount} high-risk security event(s) detected in the current log batch. 
+                    System has automatically responded according to security policies.
+                </div>
+            `;
+            
+            // Add click to dismiss
+            alertDiv.addEventListener('click', () => {
+                alertDiv.remove();
+            });
+            
+            container.appendChild(alertDiv);
+            
+            // Auto-dismiss after 10 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 10000);
+        }
+
+        // Live Dashboard Log Fetching
+        async function loadLogs() {
+            try {
+                const response = await fetch('/logs');
+                const data = await response.json();
+
+                const table = document.getElementById('logTable');
+                table.innerHTML = "";
+
+                let high = 0, medium = 0, low = 0;
+                let ipFreq = {};
+
+                data.forEach(log => {
+                    if (log.severity === "High") high++;
+                    else if (log.severity === "Medium") medium++;
+                    else low++;
+
+                    if (log.ip !== "N/A" && log.ip !== "Unknown") {
+                        ipFreq[log.ip] = (ipFreq[log.ip] || 0) + 1;
+                    }
+
+                    // Format time to include date and time (removing microsecond decimals if any)
+                    const timeFormatted = log.time.split('.')[0];
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td style="color: var(--text-secondary); font-family: monospace;">${timeFormatted}</td>
+                        <td style="font-family: monospace; font-weight: 500;">${log.ip}</td>
+                        <td><span class="badge ${log.severity.toLowerCase()}">${log.severity}</span></td>
+                        <td>${log.threat}</td>
+                        <td style="color: var(--text-secondary);">${log.action}</td>
+                        <td><span class="badge ${log.status.toLowerCase()}">${log.status}</span></td>
+                    `;
+                    table.appendChild(row);
+                });
+
+                // Top Threat IP
+                let topIp = "None";
+                let maxCount = 0;
+                for (const [ip, count] of Object.entries(ipFreq)) {
+                    if (count > maxCount) {
+                        maxCount = count;
+                        topIp = ip;
+                    }
+                }
+
+                document.getElementById("val-total").innerText = data.length;
+                document.getElementById("val-high").innerText = high;
+                document.getElementById("val-top-ip").innerText = topIp;
+
+                // Show alert if high-risk events detected
+                if (high > 0) {
+                    showHighRiskAlert(high);
+                }
+
+                // Update Bar Chart
+                barChartInst.data.datasets[0].data = [low, medium, high];
+                barChartInst.update();
+
+                // Update Pie Chart
+                pieChartInst.data.datasets[0].data = [low, medium, high];
+                pieChartInst.update();
+
+                // Update Attack Visualizer Data
+                if (data.length > 0) {
+                    const activityLevel = Math.min(data.length, 3);
+                    for(let i=0; i<activityLevel; i++) {
+                        // Spread out the attacks a little bit to look natural
+                        setTimeout(() => { triggerAttack(); }, Math.random() * 1000);
+                    }
+                } else if (Math.random() > 0.5) {
+                    // Occasionally trigger random ambient attacks when quiet
+                    triggerAttack();
+                }
+
+                const statusBadge = document.getElementById('system-status');
+                statusBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+                statusBadge.style.color = 'var(--success)';
+                statusBadge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                statusBadge.innerText = 'Optimal';
+
+                if (document.querySelector('.nav-item.active').getAttribute('data-target') === 'view-firewall') {
+                    loadFirewallBlocks();
+                }
+
+            } catch (err) {
+                console.error("Error fetching logs:", err);
+                const statusBadge = document.getElementById('system-status');
+                statusBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+                statusBadge.style.color = 'var(--danger)';
+                statusBadge.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                statusBadge.innerText = 'Connection Lost';
+            }
+        }
+
+        // --- RAW LOGS LOGIC ---
+        document.getElementById('btn-fetch-logs').addEventListener('click', async () => {
+            const dumpElem = document.getElementById('raw-log-dump');
+            dumpElem.innerText = "Fetching securely...";
+            try {
+                const res = await fetch('/api/raw_logs');
+                const rawData = await res.json();
+                dumpElem.innerText = JSON.stringify(rawData, null, 2);
+            } catch (err) {
+                dumpElem.innerText = "Error fetching raw dump: " + err;
+            }
+        });
+
+        // --- SETTINGS LOGIC ---
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/settings');
+                const settings = await res.json();
+                document.getElementById('setting-auto-block').checked = settings.auto_block;
+                document.getElementById('setting-alerts').checked = settings.log_alerts;
+                document.getElementById('setting-strict').checked = settings.strict_mode;
+            } catch (e) {
+                console.error("Failed to load settings", e);
+            }
+        }
+
+        async function updateSettings() {
+            const newSettings = {
+                auto_block: document.getElementById('setting-auto-block').checked,
+                log_alerts: document.getElementById('setting-alerts').checked,
+                strict_mode: document.getElementById('setting-strict').checked
+            };
+            await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newSettings)
+            });
+        }
+
+        document.getElementById('setting-auto-block').addEventListener('change', updateSettings);
+        document.getElementById('setting-alerts').addEventListener('change', updateSettings);
+        document.getElementById('setting-strict').addEventListener('change', updateSettings);
+
+        // Initialization
+        initCharts();
+        loadSettings();
+        loadLogs();
+        setInterval(loadLogs, 3000); 
+    </script>
+</body>
+</html>
